@@ -94,7 +94,10 @@ class UnleashedClient:
         driver.find_element(By.ID, "password").send_keys(self.password)
         btn = driver.find_element(By.XPATH, f"//button[contains(text(),'{self.btn_text}')]")
         driver.execute_script("arguments[0].click();", btn)
-        wait.until(EC.url_contains(self.wait_for))
+        try:
+            wait.until(EC.url_contains(self.wait_for))
+        except Exception:
+            raise Exception("Authentication failed — check your IP, username and password")
         if self.wait_elem:
             wait.until(EC.presence_of_element_located((By.ID, self.wait_elem)))
         time.sleep(2)
@@ -124,6 +127,12 @@ class UnleashedClient:
 
         except Exception as e:
             msg = str(e).split("\n")[0][:120]
+            if "ERR_CONNECTION_REFUSED" in msg or "ERR_CONNECTION_TIMED_OUT" in msg:
+                msg = f"Cannot reach {self.ip} — check IP address and network connectivity"
+            elif "Authentication failed" in msg:
+                pass  # already clear
+            elif "net::" in msg:
+                msg = f"Network error — cannot connect to {self.ip}"
             return False, msg
         finally:
             driver.quit()

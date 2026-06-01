@@ -110,7 +110,7 @@ class SettingsDialog(QDialog):
         # Title
         title = QLabel("⚙  Settings")
         title.setFont(QFont("Segoe UI", 16, QFont.Weight.Bold))
-        title.setStyleSheet("color: #e94560; margin-bottom: 4px;")
+        title.setStyleSheet("color: #E8581A; margin-bottom: 4px;")
         layout.addWidget(title)
 
         # Tabs
@@ -189,7 +189,7 @@ class SettingsDialog(QDialog):
             btn.setChecked(r1["region"] == key)
             btn.setProperty("region_key", key)
             btn.clicked.connect(lambda checked, k=key: self._on_region(k))
-            btn.setStyleSheet("QPushButton { padding: 8px; font-size: 11px; } QPushButton:checked { background: #e94560; }")
+            btn.setStyleSheet("QPushButton { padding: 8px; font-size: 11px; } QPushButton:checked { background: #E8581A; }")
             self.region_group.addButton(btn)
             region_layout.addWidget(btn)
         form_r1.addRow("Region", region_layout)
@@ -243,7 +243,7 @@ class SettingsDialog(QDialog):
         self.lbl_status.setText(("✓  " if success else "✗  ") + short_msg)
         self.lbl_status.setObjectName("status_ok" if success else "status_err")
         self.lbl_status.setStyleSheet(
-            "color: #4caf50;" if success else "color: #e94560;")
+            "color: #4caf50;" if success else "color: #E8581A;")
 
     # ── TAB: Buttons ─────────────────────────────────────────────
     def _tab_buttons(self) -> QWidget:
