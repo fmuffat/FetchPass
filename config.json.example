@@ -1,0 +1,34 @@
+{
+    "mode": "unleashed",
+    "unleashed": {
+        "ip": "",
+        "username": "",
+        "password": "",
+        "account_type": "guestadmin",
+        "ssid": ""
+    },
+    "ruckus_one": {
+        "region": "eu",
+        "tenant_id": "",
+        "client_id": "",
+        "client_secret": "",
+        "ssid": ""
+    },
+    "buttons": [
+        {"label": "Short Visit",  "duration": 4,  "unit": "hour"},
+        {"label": "Full Day",     "duration": 1,  "unit": "day"},
+        {"label": "Weekly Pass",  "duration": 1,  "unit": "week"}
+    ],
+    "ticket": {
+        "header1": "WiFi Guest Pass",
+        "header2": "",
+        "footer": "Thank you for visiting",
+        "language": "en"
+    },
+    "printer": {
+        "type": "simulation",
+        "connection": "usb",
+        "ip": "",
+        "port": 9100
+    }
+}
