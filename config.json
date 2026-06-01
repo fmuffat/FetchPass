@@ -1,23 +1,35 @@
 {
-    "mode": "unleashed",
+    "mode": "ruckus_one",
     "unleashed": {
-        "ip": "",
-        "username": "",
-        "password": "",
+        "ip": "192.168.1.130",
+        "username": "guestadmin",
+        "password": "Guestadmin74!",
         "account_type": "guestadmin",
-        "ssid": ""
+        "ssid": "Guest"
     },
     "ruckus_one": {
         "region": "eu",
-        "tenant_id": "",
-        "client_id": "",
-        "client_secret": "",
-        "ssid": ""
+        "tenant_id": "44b5983c85034d0e9ae07f474fa9eb55",
+        "client_id": "060a0d04ab4fbdf4d929be3e2638fc1c",
+        "client_secret": "dcf3ae8ac26d5c3ba1b53b62e6bb4adb",
+        "ssid": "Demo_SSID_Guest"
     },
     "buttons": [
-        {"label": "Short Visit",  "duration": 4,  "unit": "hour"},
-        {"label": "Full Day",     "duration": 1,  "unit": "day"},
-        {"label": "Weekly Pass",  "duration": 1,  "unit": "week"}
+        {
+            "label": "4 Hours",
+            "duration": 4,
+            "unit": "hour"
+        },
+        {
+            "label": "24 Hours",
+            "duration": 1,
+            "unit": "day"
+        },
+        {
+            "label": "7 Days",
+            "duration": 1,
+            "unit": "week"
+        }
     ],
     "ticket": {
         "header1": "WiFi Guest Pass",
@@ -26,9 +38,11 @@
         "language": "en"
     },
     "printer": {
-        "type": "simulation",
+        "type": "escpos",
         "connection": "usb",
         "ip": "",
-        "port": 9100
+        "port": 9100,
+        "usb_port": "COM20",
+        "brother_model": "QL-800"
     }
 }

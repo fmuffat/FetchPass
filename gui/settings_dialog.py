@@ -309,25 +309,102 @@ class SettingsDialog(QDialog):
         layout.setSpacing(12)
         pc = self.config["printer"]
 
+        # ── Printer Type ──────────────────────────────────────────
         grp_type = QGroupBox("Printer Type")
         type_layout = QHBoxLayout(grp_type)
-        self.rb_sim    = QRadioButton("Simulation")
+        self.rb_sim     = QRadioButton("Simulation")
         self.rb_brother = QRadioButton("Brother QL (USB)")
         self.rb_escpos  = QRadioButton("ESC/POS (USB)")
         self.rb_sim.setChecked(pc["type"] == "simulation")
         self.rb_brother.setChecked(pc["type"] == "brother_ql")
         self.rb_escpos.setChecked(pc["type"] == "escpos")
+        self.rb_sim.toggled.connect(self._on_printer_type_changed)
+        self.rb_brother.toggled.connect(self._on_printer_type_changed)
+        self.rb_escpos.toggled.connect(self._on_printer_type_changed)
         type_layout.addWidget(self.rb_sim)
         type_layout.addWidget(self.rb_brother)
         type_layout.addWidget(self.rb_escpos)
         layout.addWidget(grp_type)
 
-        # Test print button
+        # ── Brother QL Model ──────────────────────────────────────
+        self.grp_brother = QGroupBox("Brother QL Model")
+        brother_form = QFormLayout(self.grp_brother)
+        self.cb_brother_model = QComboBox()
+        self.cb_brother_model.addItems([
+            "QL-700", "QL-710W", "QL-720NW",
+            "QL-800", "QL-810W", "QL-820NWB",
+            "QL-1100", "QL-1110NWB"
+        ])
+        self.cb_brother_model.setCurrentText(pc.get("brother_model", "QL-800"))
+        brother_form.addRow("Model", self.cb_brother_model)
+        layout.addWidget(self.grp_brother)
+
+        # ── USB Port ──────────────────────────────────────────────
+        self.grp_port = QGroupBox("USB Port")
+        port_layout = QFormLayout(self.grp_port)
+
+        port_row = QHBoxLayout()
+        self.cb_port = QComboBox()
+        self.cb_port.setMinimumWidth(200)
+        self.cb_port.setEditable(True)
+        self.cb_port.setCurrentText(pc.get("usb_port", ""))
+        btn_detect = QPushButton("🔍  Detect")
+        btn_detect.setFixedWidth(100)
+        btn_detect.clicked.connect(self._detect_ports)
+        port_row.addWidget(self.cb_port)
+        port_row.addWidget(btn_detect)
+
+        self.lbl_ports_status = QLabel("")
+        self.lbl_ports_status.setStyleSheet("color: #666; font-size: 11px;")
+
+        port_layout.addRow("Port", port_row)
+        port_layout.addRow("", self.lbl_ports_status)
+        layout.addWidget(self.grp_port)
+
+        # ── Test Print ────────────────────────────────────────────
         btn_test_print = QPushButton("🖨  Test Print")
         btn_test_print.clicked.connect(self._test_print)
         layout.addWidget(btn_test_print)
         layout.addStretch()
+
+        # Initial state
+        self._on_printer_type_changed()
+
+        # Auto-detect on open
+        self._detect_ports()
+
         return w
+
+    def _on_printer_type_changed(self):
+        is_sim = self.rb_sim.isChecked()
+        self.grp_brother.setVisible(self.rb_brother.isChecked())
+        self.grp_port.setVisible(not is_sim)
+
+    def _detect_ports(self):
+        """Scan and list available USB/Serial ports."""
+        self.lbl_ports_status.setText("Scanning...")
+        try:
+            import serial.tools.list_ports
+            ports = list(serial.tools.list_ports.comports())
+            self.cb_port.clear()
+
+            if ports:
+                for p in ports:
+                    desc = f"{p.device} — {p.description}"
+                    self.cb_port.addItem(desc, p.device)
+                self.lbl_ports_status.setText(
+                    f"✓  {len(ports)} port(s) found")
+                self.lbl_ports_status.setStyleSheet("color: #4CAF50; font-size: 11px;")
+            else:
+                self.cb_port.addItem("No ports found")
+                self.lbl_ports_status.setText("No USB ports detected")
+                self.lbl_ports_status.setStyleSheet("color: #E8581A; font-size: 11px;")
+
+        except ImportError:
+            self.cb_port.addItem("pyserial not installed")
+            self.lbl_ports_status.setText(
+                "Run: pip install pyserial")
+            self.lbl_ports_status.setStyleSheet("color: #E8581A; font-size: 11px;")
 
     def _test_print(self):
         self._sync_to_config()
@@ -366,6 +443,11 @@ class SettingsDialog(QDialog):
             self.config["printer"]["type"] = "brother_ql"
         else:
             self.config["printer"]["type"] = "escpos"
+        # Save port — use itemData if available, else text
+        port_text = self.cb_port.currentText()
+        port_data = self.cb_port.currentData()
+        self.config["printer"]["usb_port"] = port_data if port_data else port_text
+        self.config["printer"]["brother_model"] = self.cb_brother_model.currentText()
 
     def _save(self):
         self._sync_to_config()

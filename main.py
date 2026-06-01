@@ -45,6 +45,8 @@ DEFAULT_CONFIG = {
     "printer": {
         "type": "simulation",
         "connection": "usb",
+        "usb_port": "",
+        "brother_model": "QL-800",
         "ip": "",
         "port": 9100
     }
