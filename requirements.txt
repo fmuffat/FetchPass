@@ -1,0 +1,6 @@
+selenium>=4.0.0
+webdriver-manager>=4.0.0
+PyQt6>=6.4.0
+brother_ql>=0.10.0
+python-escpos>=3.0.0
+pyinstaller>=5.0.0
