@@ -31,6 +31,13 @@ DEFAULT_CONFIG = {
         "client_secret": "",
         "ssid": ""
     },
+    "smartzone": {
+        "host": "",
+        "username": "",
+        "password": "",
+        "zone": "",
+        "wlan": ""
+    },
     "buttons": [
         {"label": "Short Visit",  "duration": 4,  "unit": "hour"},
         {"label": "Full Day",     "duration": 1,  "unit": "day"},

@@ -24,7 +24,8 @@ class VoucherThread(QThread):
 
     def run(self):
         try:
-            if self.config["mode"] == "unleashed":
+            mode = self.config["mode"]
+            if mode == "unleashed":
                 from core.unleashed import UnleashedClient
                 uc = self.config["unleashed"]
                 client = UnleashedClient(
@@ -32,13 +33,21 @@ class VoucherThread(QThread):
                     password=uc["password"], ssid=uc["ssid"],
                     account_type=uc["account_type"]
                 )
-            else:
+            elif mode == "ruckus_one":
                 from core.ruckus_one import RuckusOneClient
                 r1 = self.config["ruckus_one"]
                 client = RuckusOneClient(
                     region=r1["region"], tenant_id=r1["tenant_id"],
                     client_id=r1["client_id"], client_secret=r1["client_secret"],
                     ssid=r1["ssid"]
+                )
+            else:  # smartzone
+                from core.smartzone import SmartZoneClient
+                sz = self.config["smartzone"]
+                client = SmartZoneClient(
+                    host=sz["host"], username=sz["username"],
+                    password=sz["password"], zone=sz["zone"],
+                    wlan=sz["wlan"]
                 )
             voucher = client.create_voucher(self.duration, self.unit)
             self.success.emit(voucher)
@@ -52,7 +61,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.config = config
         self.setWindowTitle("FetchPass 🐕")
-        self.setMinimumSize(480, 580)
+        self.setMinimumSize(500, 580)
         self.setStyleSheet(self._stylesheet())
         self._build_ui()
 
@@ -106,9 +115,36 @@ class MainWindow(QMainWindow):
         """
 
     def _build_ui(self):
+        from PyQt6.QtWidgets import QScrollArea
+
+        # Outer widget as central
+        outer = QWidget()
+        outer.setObjectName("central")
+        self.setCentralWidget(outer)
+        outer_layout = QVBoxLayout(outer)
+        outer_layout.setContentsMargins(0, 0, 0, 0)
+        outer_layout.setSpacing(0)
+
+        # Scroll area wrapping all content
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setStyleSheet("""
+            QScrollArea { background: #1A1A1A; border: none; }
+            QScrollBar:vertical { background: #2A2A2A; width: 8px; border-radius: 4px; margin: 0; }
+            QScrollBar::handle:vertical { background: #E8581A; border-radius: 4px; min-height: 20px; }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
+        """)
+
+        # Inner content widget
         central = QWidget()
         central.setObjectName("central")
-        self.setCentralWidget(central)
+        central.setMinimumWidth(460)
+        scroll.setWidget(central)
+        outer_layout.addWidget(scroll)
+
         layout = QVBoxLayout(central)
         layout.setContentsMargins(24, 24, 24, 24)
         layout.setSpacing(16)
@@ -154,25 +190,29 @@ class MainWindow(QMainWindow):
         self.ticket_frame = QFrame()
         self.ticket_frame.setObjectName("ticket_frame")
         ticket_layout = QVBoxLayout(self.ticket_frame)
+        ticket_layout.setContentsMargins(8, 8, 8, 8)
         self.lbl_ticket = QLabel("No voucher generated yet.")
         self.lbl_ticket.setObjectName("ticket_label")
-        self.lbl_ticket.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self.lbl_ticket.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         self.lbl_ticket.setWordWrap(True)
         self.lbl_ticket.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse)
         ticket_layout.addWidget(self.lbl_ticket)
         layout.addWidget(self.ticket_frame)
-
         layout.addStretch()
 
     # ── Helpers ──────────────────────────────────────────────────
     def _mode_label(self) -> str:
-        if self.config["mode"] == "unleashed":
+        mode = self.config["mode"]
+        if mode == "unleashed":
             ip = self.config["unleashed"].get("ip", "not configured")
             return f"Unleashed  {ip}"
-        else:
+        elif mode == "ruckus_one":
             region = self.config["ruckus_one"].get("region", "eu").upper()
             return f"Ruckus One  {region}"
+        else:
+            host = self.config.get("smartzone", {}).get("host", "not configured")
+            return f"SmartZone  {host}"
 
     def _btn_label(self, btn_cfg: dict) -> str:
         label    = btn_cfg.get("label", "")
@@ -196,8 +236,16 @@ class MainWindow(QMainWindow):
 
     def _on_voucher_success(self, voucher: dict):
         self._set_busy(False)
-        self.lbl_status.setText("✓  Voucher created successfully")
-        self.lbl_status.setStyleSheet("color: #4caf50; font-size: 12px;")
+
+        # Warning if password > 8 chars
+        key = voucher.get("key", "")
+        if len(key) > 8:
+            self.lbl_status.setText(f"✓  Voucher created — ⚠ Password is {len(key)} chars (recommended max: 8)")
+            self.lbl_status.setStyleSheet("color: #f0a500; font-size: 12px;")
+        else:
+            self.lbl_status.setText("✓  Voucher created successfully")
+            self.lbl_status.setStyleSheet("color: #4CAF50; font-size: 12px;")
+
         self._display_voucher(voucher)
 
         # Print

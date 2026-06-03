@@ -1,5 +1,5 @@
 {
-    "mode": "ruckus_one",
+    "mode": "smartzone",
     "unleashed": {
         "ip": "192.168.1.130",
         "username": "guestadmin",
@@ -13,6 +13,13 @@
         "client_id": "060a0d04ab4fbdf4d929be3e2638fc1c",
         "client_secret": "dcf3ae8ac26d5c3ba1b53b62e6bb4adb",
         "ssid": "Demo_SSID_Guest"
+    },
+    "smartzone": {
+        "host": "vsz-demo1.ruckuslabs.co.uk",
+        "username": "guestadmin",
+        "password": "guestadmin74!",
+        "zone": "MUFFAT",
+        "wlan": "Guest"
     },
     "buttons": [
         {
@@ -38,7 +45,7 @@
         "language": "en"
     },
     "printer": {
-        "type": "escpos",
+        "type": "brother_ql",
         "connection": "usb",
         "ip": "",
         "port": 9100,

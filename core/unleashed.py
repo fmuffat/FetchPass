@@ -116,13 +116,15 @@ class UnleashedClient:
                     root = ET.fromstring(body)
                     sysinfo = root.find(".//sysinfo")
                     version = sysinfo.get("version-num", "unknown") if sysinfo is not None else "unknown"
-                    return True, f"Connected — Unleashed {version}"
+                    ssid_msg = self._verify_ssid(driver)
+                    return True, f"Authentication successful — Unleashed {version} — {ssid_msg}"
                 return False, "Connected but could not retrieve system info"
             else:
                 resp = self._api_call(driver, "getstat", "system", "<guest-list/>")
                 body = resp.get("body", "")
                 if "ajax-response" in body:
-                    return True, f"Connected — Guest Manager ({self.username})"
+                    ssid_msg = self._verify_ssid(driver)
+                    return True, f"Authentication successful — {ssid_msg}"
                 return False, "Connected but could not reach guest API"
 
         except Exception as e:
@@ -136,6 +138,23 @@ class UnleashedClient:
             return False, msg
         finally:
             driver.quit()
+
+    def _verify_ssid(self, driver) -> str:
+        """Verify SSID exists — returns status string."""
+        try:
+            resp = self._api_call(driver, "getstat", "stamgr", "<wlan LEVEL='1'/>")
+            body = resp.get("body", "")
+            if not body.strip():
+                return f"SSID '{self.ssid}' (not verified)"
+            root = ET.fromstring(body)
+            wlans = [w.get("ssid", "") for w in root.findall(".//wlan")]
+            if self.ssid in wlans:
+                return f"SSID '{self.ssid}' ✓"
+            elif wlans:
+                return f"⚠ SSID '{self.ssid}' not found — available: {', '.join(wlans[:5])}"
+            return f"SSID '{self.ssid}' (not verified)"
+        except Exception:
+            return f"SSID '{self.ssid}' (not verified)"
 
     def create_voucher(self, duration: int, unit: str = "hour") -> dict:
         """
@@ -162,7 +181,7 @@ class UnleashedClient:
 
             # Create voucher — pass unit directly to API
             now = datetime.now()
-            guest_name = f"Guest-{now.strftime('%Y%m%d-%H%M%S')}"
+            guest_name = f"FetchPass-{now.strftime('%Y%m%d-%H%M%S')}"
             resp2 = self._api_call(driver, "docmd", "system",
                 f"<xcmd cmd='create-guest' name='{guest_name}' ssid='{self.ssid}' "
                 f"duration='{duration}' duration-unit='{unit}' x-key='{key}' "

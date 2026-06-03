@@ -1,6 +1,6 @@
 """
 FetchPass - Settings Dialog
-Configure Unleashed / Ruckus One, buttons, ticket design, and printer.
+Configure Unleashed / Ruckus One / SmartZone, buttons, ticket design, and printer.
 """
 
 import json
@@ -22,7 +22,8 @@ class TestConnectionThread(QThread):
 
     def run(self):
         try:
-            if self.config["mode"] == "unleashed":
+            mode = self.config["mode"]
+            if mode == "unleashed":
                 from core.unleashed import UnleashedClient
                 uc = self.config["unleashed"]
                 client = UnleashedClient(
@@ -30,13 +31,21 @@ class TestConnectionThread(QThread):
                     password=uc["password"], ssid=uc["ssid"],
                     account_type=uc["account_type"]
                 )
-            else:
+            elif mode == "ruckus_one":
                 from core.ruckus_one import RuckusOneClient
                 r1 = self.config["ruckus_one"]
                 client = RuckusOneClient(
                     region=r1["region"], tenant_id=r1["tenant_id"],
                     client_id=r1["client_id"], client_secret=r1["client_secret"],
                     ssid=r1["ssid"]
+                )
+            else:  # smartzone
+                from core.smartzone import SmartZoneClient
+                sz = self.config["smartzone"]
+                client = SmartZoneClient(
+                    host=sz["host"], username=sz["username"],
+                    password=sz["password"], zone=sz["zone"],
+                    wlan=sz["wlan"]
                 )
             success, msg = client.test_connection()
             self.result.emit(success, msg)
@@ -50,7 +59,7 @@ class SettingsDialog(QDialog):
         super().__init__(parent)
         self.config = json.loads(json.dumps(config))  # deep copy
         self.setWindowTitle("FetchPass — Settings")
-        self.setMinimumWidth(540)
+        self.setMinimumWidth(560)
         self.setStyleSheet(self._stylesheet())
         self._build_ui()
 
@@ -107,13 +116,11 @@ class SettingsDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.setSpacing(12)
 
-        # Title
         title = QLabel("⚙  Settings")
         title.setFont(QFont("Segoe UI", 16, QFont.Weight.Bold))
         title.setStyleSheet("color: #E8581A; margin-bottom: 4px;")
         layout.addWidget(title)
 
-        # Tabs
         tabs = QTabWidget()
         tabs.addTab(self._tab_connection(), "Connection")
         tabs.addTab(self._tab_buttons(), "Buttons")
@@ -121,7 +128,6 @@ class SettingsDialog(QDialog):
         tabs.addTab(self._tab_printer(), "Printer")
         layout.addWidget(tabs)
 
-        # Save / Cancel
         btn_row = QHBoxLayout()
         btn_cancel = QPushButton("Cancel")
         btn_cancel.clicked.connect(self.reject)
@@ -139,19 +145,24 @@ class SettingsDialog(QDialog):
         layout = QVBoxLayout(w)
         layout.setSpacing(12)
 
-        # Mode selector
+        # Mode selector — 3 platforms
         mode_group = QGroupBox("Platform")
         mode_layout = QHBoxLayout(mode_group)
-        self.rb_unleashed = QRadioButton("Ruckus Unleashed")
-        self.rb_r1 = QRadioButton("Ruckus One")
+        self.rb_unleashed  = QRadioButton("Ruckus Unleashed")
+        self.rb_r1         = QRadioButton("Ruckus One")
+        self.rb_smartzone  = QRadioButton("SmartZone")
         self.rb_unleashed.setChecked(self.config["mode"] == "unleashed")
         self.rb_r1.setChecked(self.config["mode"] == "ruckus_one")
+        self.rb_smartzone.setChecked(self.config["mode"] == "smartzone")
         self.rb_unleashed.toggled.connect(self._on_mode_changed)
+        self.rb_r1.toggled.connect(self._on_mode_changed)
+        self.rb_smartzone.toggled.connect(self._on_mode_changed)
         mode_layout.addWidget(self.rb_unleashed)
         mode_layout.addWidget(self.rb_r1)
+        mode_layout.addWidget(self.rb_smartzone)
         layout.addWidget(mode_group)
 
-        # Unleashed fields
+        # ── Unleashed fields ──────────────────────────────────────
         self.grp_unleashed = QGroupBox("Unleashed Configuration")
         form = QFormLayout(self.grp_unleashed)
         uc = self.config["unleashed"]
@@ -165,19 +176,18 @@ class SettingsDialog(QDialog):
         self.cb_account = QComboBox()
         self.cb_account.addItems(["guestadmin"])
         self.cb_account.setCurrentText(uc["account_type"])
-        form.addRow("IP Address", self.f_ip)
-        form.addRow("Username", self.f_user)
-        form.addRow("Password", self.f_pass)
-        form.addRow("Guest SSID", self.f_ssid)
+        form.addRow("IP Address",   self.f_ip)
+        form.addRow("Username",     self.f_user)
+        form.addRow("Password",     self.f_pass)
+        form.addRow("Guest SSID",   self.f_ssid)
         form.addRow("Account Type", self.cb_account)
         layout.addWidget(self.grp_unleashed)
 
-        # Ruckus One fields (placeholder for now)
+        # ── Ruckus One fields ─────────────────────────────────────
         self.grp_r1 = QGroupBox("Ruckus One Configuration")
         form_r1 = QFormLayout(self.grp_r1)
         r1 = self.config["ruckus_one"]
 
-        # Region buttons
         region_layout = QHBoxLayout()
         self.region_group = QButtonGroup()
         regions = [("Europe", "eu", "api.eu.ruckus.cloud"),
@@ -194,22 +204,45 @@ class SettingsDialog(QDialog):
             region_layout.addWidget(btn)
         form_r1.addRow("Region", region_layout)
 
-        self.f_tenant    = QLineEdit(r1["tenant_id"])
-        self.f_client_id = QLineEdit(r1["client_id"])
+        self.f_tenant        = QLineEdit(r1["tenant_id"])
+        self.f_client_id     = QLineEdit(r1["client_id"])
         self.f_client_secret = QLineEdit(r1["client_secret"])
         self.f_client_secret.setEchoMode(QLineEdit.EchoMode.Password)
-        self.f_ssid_r1   = QLineEdit(r1["ssid"])
-        form_r1.addRow("Tenant ID", self.f_tenant)
-        form_r1.addRow("Client ID", self.f_client_id)
+        self.f_ssid_r1       = QLineEdit(r1["ssid"])
+        form_r1.addRow("Tenant ID",     self.f_tenant)
+        form_r1.addRow("Client ID",     self.f_client_id)
         form_r1.addRow("Client Secret", self.f_client_secret)
-        form_r1.addRow("Guest SSID", self.f_ssid_r1)
+        form_r1.addRow("Guest SSID",    self.f_ssid_r1)
         layout.addWidget(self.grp_r1)
 
-        # Test connection button + status
+        # ── SmartZone fields ──────────────────────────────────────
+        self.grp_sz = QGroupBox("SmartZone Configuration")
+        form_sz = QFormLayout(self.grp_sz)
+        sz = self.config.get("smartzone", {})
+        self.f_sz_host = QLineEdit(sz.get("host", ""))
+        self.f_sz_host.setPlaceholderText("192.168.1.1 or hostname")
+        self.f_sz_user = QLineEdit(sz.get("username", ""))
+        self.f_sz_pass = QLineEdit(sz.get("password", ""))
+        self.f_sz_pass.setEchoMode(QLineEdit.EchoMode.Password)
+        self.f_sz_zone = QLineEdit(sz.get("zone", ""))
+        self.f_sz_zone.setPlaceholderText("Zone name")
+        self.f_sz_wlan = QLineEdit(sz.get("wlan", ""))
+        self.f_sz_wlan.setPlaceholderText("Guest WLAN name")
+        form_sz.addRow("Host / IP",  self.f_sz_host)
+        form_sz.addRow("Username",   self.f_sz_user)
+        form_sz.addRow("Password",   self.f_sz_pass)
+        form_sz.addRow("Zone Name",  self.f_sz_zone)
+        form_sz.addRow("WLAN Name",  self.f_sz_wlan)
+        lbl_note = QLabel("⚠  Requires vSZ-E or vSZ-H firmware ≥ 7.0")
+        lbl_note.setStyleSheet("color: #888; font-size: 11px;")
+        form_sz.addRow("", lbl_note)
+        layout.addWidget(self.grp_sz)
+
+        # Test connection
         test_row = QHBoxLayout()
-        self.btn_test = QPushButton("🔌  Test Connection")
-        self.btn_test.clicked.connect(self._test_connection)
+        self.btn_test   = QPushButton("🔌  Test Connection")
         self.lbl_status = QLabel("")
+        self.btn_test.clicked.connect(self._test_connection)
         test_row.addWidget(self.btn_test)
         test_row.addWidget(self.lbl_status)
         test_row.addStretch()
@@ -220,9 +253,12 @@ class SettingsDialog(QDialog):
         return w
 
     def _on_mode_changed(self):
-        is_unleashed = self.rb_unleashed.isChecked()
-        self.grp_unleashed.setVisible(is_unleashed)
-        self.grp_r1.setVisible(not is_unleashed)
+        mode = ("unleashed" if self.rb_unleashed.isChecked()
+                else "ruckus_one" if self.rb_r1.isChecked()
+                else "smartzone")
+        self.grp_unleashed.setVisible(mode == "unleashed")
+        self.grp_r1.setVisible(mode == "ruckus_one")
+        self.grp_sz.setVisible(mode == "smartzone")
 
     def _on_region(self, key: str):
         self.config["ruckus_one"]["region"] = key
@@ -231,17 +267,15 @@ class SettingsDialog(QDialog):
         self._sync_to_config()
         self.btn_test.setEnabled(False)
         self.lbl_status.setText("Testing...")
-        self.lbl_status.setObjectName("")
+        self.lbl_status.setStyleSheet("color: #888;")
         self.thread = TestConnectionThread(self.config)
         self.thread.result.connect(self._on_test_result)
         self.thread.start()
 
     def _on_test_result(self, success: bool, msg: str):
         self.btn_test.setEnabled(True)
-        # Truncate to first meaningful line
-        short_msg = msg.split("\n")[0][:100]
+        short_msg = msg.split("\n")[0][:120]
         self.lbl_status.setText(("✓  " if success else "✗  ") + short_msg)
-        self.lbl_status.setObjectName("status_ok" if success else "status_err")
         self.lbl_status.setStyleSheet(
             "color: #4caf50;" if success else "color: #E8581A;")
 
@@ -258,18 +292,18 @@ class SettingsDialog(QDialog):
         for i, btn in enumerate(self.config["buttons"]):
             grp = QGroupBox(f"Button {i+1}")
             form = QFormLayout(grp)
-            f_label = QLineEdit(btn["label"])
+            f_label    = QLineEdit(btn["label"])
             f_duration = QSpinBox()
             f_duration.setRange(1, 8760)
             f_duration.setValue(btn["duration"])
-            f_duration.setStyleSheet("background: #16213e; color: #e0e0e0; padding: 4px;")
+            f_duration.setStyleSheet("background: #2A2A2A; color: #F0F0F0; padding: 4px;")
             f_unit = QComboBox()
             f_unit.addItems(["hours", "days", "weeks"])
             unit_map = {"hour": "hours", "day": "days", "week": "weeks"}
             f_unit.setCurrentText(unit_map.get(btn.get("unit", "hour"), "hours"))
-            form.addRow("Label", f_label)
+            form.addRow("Label",    f_label)
             form.addRow("Duration", f_duration)
-            form.addRow("Unit", f_unit)
+            form.addRow("Unit",     f_unit)
             layout.addWidget(grp)
             self.btn_fields.append((f_label, f_duration, f_unit))
 
@@ -296,8 +330,8 @@ class SettingsDialog(QDialog):
         self.cb_lang.setCurrentText(tc.get("language", "en"))
         form.addRow("Header line 1", self.f_header1)
         form.addRow("Header line 2", self.f_header2)
-        form.addRow("Footer", self.f_footer)
-        form.addRow("Language", self.cb_lang)
+        form.addRow("Footer",        self.f_footer)
+        form.addRow("Language",      self.cb_lang)
         layout.addWidget(grp)
         layout.addStretch()
         return w
@@ -309,7 +343,6 @@ class SettingsDialog(QDialog):
         layout.setSpacing(12)
         pc = self.config["printer"]
 
-        # ── Printer Type ──────────────────────────────────────────
         grp_type = QGroupBox("Printer Type")
         type_layout = QHBoxLayout(grp_type)
         self.rb_sim     = QRadioButton("Simulation")
@@ -326,7 +359,6 @@ class SettingsDialog(QDialog):
         type_layout.addWidget(self.rb_escpos)
         layout.addWidget(grp_type)
 
-        # ── Brother QL Model ──────────────────────────────────────
         self.grp_brother = QGroupBox("Brother QL Model")
         brother_form = QFormLayout(self.grp_brother)
         self.cb_brother_model = QComboBox()
@@ -339,10 +371,8 @@ class SettingsDialog(QDialog):
         brother_form.addRow("Model", self.cb_brother_model)
         layout.addWidget(self.grp_brother)
 
-        # ── USB Port ──────────────────────────────────────────────
         self.grp_port = QGroupBox("USB Port")
         port_layout = QFormLayout(self.grp_port)
-
         port_row = QHBoxLayout()
         self.cb_port = QComboBox()
         self.cb_port.setMinimumWidth(200)
@@ -353,57 +383,43 @@ class SettingsDialog(QDialog):
         btn_detect.clicked.connect(self._detect_ports)
         port_row.addWidget(self.cb_port)
         port_row.addWidget(btn_detect)
-
         self.lbl_ports_status = QLabel("")
         self.lbl_ports_status.setStyleSheet("color: #666; font-size: 11px;")
-
         port_layout.addRow("Port", port_row)
         port_layout.addRow("", self.lbl_ports_status)
         layout.addWidget(self.grp_port)
 
-        # ── Test Print ────────────────────────────────────────────
         btn_test_print = QPushButton("🖨  Test Print")
         btn_test_print.clicked.connect(self._test_print)
         layout.addWidget(btn_test_print)
         layout.addStretch()
 
-        # Initial state
         self._on_printer_type_changed()
-
-        # Auto-detect on open
         self._detect_ports()
-
         return w
 
     def _on_printer_type_changed(self):
-        is_sim = self.rb_sim.isChecked()
         self.grp_brother.setVisible(self.rb_brother.isChecked())
-        self.grp_port.setVisible(not is_sim)
+        self.grp_port.setVisible(not self.rb_sim.isChecked())
 
     def _detect_ports(self):
-        """Scan and list available USB/Serial ports."""
         self.lbl_ports_status.setText("Scanning...")
         try:
             import serial.tools.list_ports
             ports = list(serial.tools.list_ports.comports())
             self.cb_port.clear()
-
             if ports:
                 for p in ports:
-                    desc = f"{p.device} — {p.description}"
-                    self.cb_port.addItem(desc, p.device)
-                self.lbl_ports_status.setText(
-                    f"✓  {len(ports)} port(s) found")
+                    self.cb_port.addItem(f"{p.device} — {p.description}", p.device)
+                self.lbl_ports_status.setText(f"✓  {len(ports)} port(s) found")
                 self.lbl_ports_status.setStyleSheet("color: #4CAF50; font-size: 11px;")
             else:
                 self.cb_port.addItem("No ports found")
                 self.lbl_ports_status.setText("No USB ports detected")
                 self.lbl_ports_status.setStyleSheet("color: #E8581A; font-size: 11px;")
-
         except ImportError:
             self.cb_port.addItem("pyserial not installed")
-            self.lbl_ports_status.setText(
-                "Run: pip install pyserial")
+            self.lbl_ports_status.setText("Run: pip install pyserial")
             self.lbl_ports_status.setStyleSheet("color: #E8581A; font-size: 11px;")
 
     def _test_print(self):
@@ -415,38 +431,53 @@ class SettingsDialog(QDialog):
 
     # ── Sync & Save ──────────────────────────────────────────────
     def _sync_to_config(self):
-        self.config["mode"] = "unleashed" if self.rb_unleashed.isChecked() else "ruckus_one"
+        if self.rb_unleashed.isChecked():
+            self.config["mode"] = "unleashed"
+        elif self.rb_r1.isChecked():
+            self.config["mode"] = "ruckus_one"
+        else:
+            self.config["mode"] = "smartzone"
+
         uc = self.config["unleashed"]
         uc["ip"]           = self.f_ip.text().strip()
         uc["username"]     = self.f_user.text().strip()
         uc["password"]     = self.f_pass.text()
         uc["ssid"]         = self.f_ssid.text().strip()
         uc["account_type"] = self.cb_account.currentText()
+
         r1 = self.config["ruckus_one"]
         r1["tenant_id"]     = self.f_tenant.text().strip()
         r1["client_id"]     = self.f_client_id.text().strip()
         r1["client_secret"] = self.f_client_secret.text()
         r1["ssid"]          = self.f_ssid_r1.text().strip()
+
+        sz = self.config.setdefault("smartzone", {})
+        sz["host"]     = self.f_sz_host.text().strip()
+        sz["username"] = self.f_sz_user.text().strip()
+        sz["password"] = self.f_sz_pass.text()
+        sz["zone"]     = self.f_sz_zone.text().strip()
+        sz["wlan"]     = self.f_sz_wlan.text().strip()
+
+        unit_back = {"hours": "hour", "days": "day", "weeks": "week"}
         for i, (f_label, f_dur, f_unit) in enumerate(self.btn_fields):
             self.config["buttons"][i]["label"]    = f_label.text()
             self.config["buttons"][i]["duration"] = f_dur.value()
-            unit_back = {"hours": "hour", "days": "day", "weeks": "week"}
-            self.config["buttons"][i]["unit"] = unit_back.get(f_unit.currentText(), f_unit.currentText())
+            self.config["buttons"][i]["unit"]     = unit_back.get(f_unit.currentText(), f_unit.currentText())
+
         tc = self.config["ticket"]
         tc["header1"]  = self.f_header1.text()
         tc["header2"]  = self.f_header2.text()
         tc["footer"]   = self.f_footer.text()
         tc["language"] = self.cb_lang.currentText()
+
         if self.rb_sim.isChecked():
             self.config["printer"]["type"] = "simulation"
         elif self.rb_brother.isChecked():
             self.config["printer"]["type"] = "brother_ql"
         else:
             self.config["printer"]["type"] = "escpos"
-        # Save port — use itemData if available, else text
-        port_text = self.cb_port.currentText()
         port_data = self.cb_port.currentData()
-        self.config["printer"]["usb_port"] = port_data if port_data else port_text
+        self.config["printer"]["usb_port"]      = port_data if port_data else self.cb_port.currentText()
         self.config["printer"]["brother_model"] = self.cb_brother_model.currentText()
 
     def _save(self):

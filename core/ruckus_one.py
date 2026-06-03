@@ -106,7 +106,7 @@ class RuckusOneClient:
         network_id = self._get_network_id()
 
         now = datetime.now()
-        guest_name = f"Guest-{now.strftime('%Y%m%d-%H%M%S')}"
+        guest_name = f"FetchPass-{now.strftime('%Y%m%d-%H%M%S')}"
 
         # Convert unit to Ruckus One format
         unit_map = {"hour": "Hour", "day": "Day", "week": "Week"}

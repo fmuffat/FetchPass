@@ -117,8 +117,27 @@ Ruckus One uses a standard OAuth2 client credentials flow — no browser require
 |---|---|---|
 | Ruckus Unleashed | 200.19 | guestadmin |
 | Ruckus One | June 2026 release | OAuth2 Client Credentials |
+| SmartZone vSZ-E | 7.1.1 | admin, guestadmin |
+| SmartZone vSZ-H | 7.1.1 | admin, guestadmin |
 
 ---
+
+
+## SmartZone Notes
+
+### Zone and WLAN names are case sensitive
+When configuring FetchPass for SmartZone, the Zone name and WLAN name must match exactly as configured on the controller, including upper/lower case.
+
+### Password length
+SmartZone allows administrators to configure the guest pass password length. FetchPass recommends setting the password to a maximum of **8 characters** to ensure the printed ticket remains readable and well-formatted on thermal printers.
+
+If a password longer than 8 characters is generated, FetchPass will display a warning.
+
+### Firmware requirement
+The guest pass password retrieval via API requires SmartZone firmware **7.0 or later**. A known bug in vSZ-H 6.1.2 causes the guest pass list to always return empty, making it impossible to retrieve the password via API.
+
+### Connection test
+The Test Connection button in Settings verifies your credentials only. It does not verify that the Zone name or WLAN name exist — make sure they are correctly typed and case sensitive.
 
 ## Building the .exe (Windows)
 
