@@ -10,10 +10,11 @@ from datetime import datetime
 class Printer:
 
     def __init__(self, config: dict):
-        self.type       = config.get("type", "simulation")   # simulation | brother_ql | escpos
-        self.connection = config.get("connection", "usb")     # usb | network
-        self.ip         = config.get("ip", "")
-        self.port       = config.get("port", 9100)
+        self.type         = config.get("type", "simulation")
+        self.connection   = config.get("connection", "usb")
+        self.ip           = config.get("ip", "")
+        self.port         = config.get("port", 9100)
+        self.printer_name = config.get("printer_name", "")
 
     def print_voucher(self, voucher: dict, ticket_config: dict) -> tuple:
         """
@@ -38,6 +39,12 @@ class Printer:
         sep2 = "-" * w
 
         lines = []
+
+        # Leading blank lines — arrow from driver appears just above ticket
+        lines.append("")
+        lines.append("")
+        lines.append("")
+
         lines.append(sep)
 
         header1 = ticket_config.get("header1", "WiFi Guest Pass")
@@ -65,7 +72,10 @@ class Printer:
             lines.append(footer.center(w))
 
         lines.append(sep)
-        lines.append("")
+
+        # Trailing blank lines — push all content above the cutter
+        for _ in range(8):
+            lines.append("")
 
         return lines
 
@@ -126,30 +136,34 @@ class Printer:
             return False, f"Brother QL error: {e}"
 
     def _print_escpos(self, lines: list) -> tuple:
-        """Print to ESC/POS printer (Epson, Star, generic)."""
+        """Print to ESC/POS printer via Windows printer spooler (win32print direct)."""
+        printer_name = self.printer_name
+        if not printer_name:
+            return False, "No printer selected — configure in Settings → Printer"
         try:
-            if self.connection == "network":
-                from escpos.printer import Network
-                p = Network(self.ip, self.port)
-            else:
-                from escpos.printer import Usb
-                p = Usb(0x04b8, 0x0202)  # Default Epson USB IDs
+            import win32print
+            hprinter = win32print.OpenPrinter(printer_name)
+            try:
+                win32print.StartDocPrinter(hprinter, 1, ("FetchPass Ticket", None, "RAW"))
+                win32print.StartPagePrinter(hprinter)
 
-            p.set(align="center", text_type="B", width=2, height=2)
-            for line in lines[:2]:  # Header bold
-                p.text(line + "\n")
+                # Send plain text only — no ESC codes
+                text = "\n".join(lines) + "\n"
+                win32print.WritePrinter(hprinter, text.encode("utf-8"))
 
-            p.set(align="left", text_type="normal", width=1, height=1)
-            for line in lines[2:]:
-                p.text(line + "\n")
+                win32print.EndPagePrinter(hprinter)
+                win32print.EndDocPrinter(hprinter)
+            finally:
+                win32print.ClosePrinter(hprinter)
 
-            p.cut()
-            return True, "Printed on ESC/POS printer"
+            return True, f"Printed on {printer_name}"
 
         except ImportError:
-            return False, "python-escpos not installed. Run: pip install python-escpos"
+            return False, "pywin32 not installed — run: pip install pywin32"
         except Exception as e:
-            return False, f"ESC/POS error: {e}"
+            return False, f"Print error: {str(e)[:100]}"
+        except Exception as e:
+            return False, f"Print error: {str(e)[:100]}"
 
     def test_print(self, ticket_config: dict) -> tuple:
         """Print a test ticket."""

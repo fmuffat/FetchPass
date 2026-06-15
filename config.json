@@ -1,5 +1,5 @@
 {
-    "mode": "smartzone",
+    "mode": "ruckus_one",
     "unleashed": {
         "ip": "192.168.1.130",
         "username": "guestadmin",
@@ -40,16 +40,17 @@
     ],
     "ticket": {
         "header1": "WiFi Guest Pass",
-        "header2": "",
+        "header2": "Welcome to ACME",
         "footer": "Thank you for visiting",
         "language": "en"
     },
     "printer": {
-        "type": "brother_ql",
+        "type": "escpos",
         "connection": "usb",
         "ip": "",
         "port": 9100,
         "usb_port": "COM20",
-        "brother_model": "QL-800"
+        "brother_model": "QL-800",
+        "printer_name": "Star TSP100 Cutter (TSP143)"
     }
 }

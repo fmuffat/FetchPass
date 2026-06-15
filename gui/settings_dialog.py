@@ -343,84 +343,98 @@ class SettingsDialog(QDialog):
         layout.setSpacing(12)
         pc = self.config["printer"]
 
+        # ── Printer Type ──────────────────────────────────────────
         grp_type = QGroupBox("Printer Type")
         type_layout = QHBoxLayout(grp_type)
-        self.rb_sim     = QRadioButton("Simulation")
-        self.rb_brother = QRadioButton("Brother QL (USB)")
-        self.rb_escpos  = QRadioButton("ESC/POS (USB)")
-        self.rb_sim.setChecked(pc["type"] == "simulation")
-        self.rb_brother.setChecked(pc["type"] == "brother_ql")
+        self.rb_sim    = QRadioButton("Simulation")
+        self.rb_escpos = QRadioButton("ESC/POS / Star / Epson (Windows)")
+        self.rb_sim.setChecked(pc["type"] != "escpos")
         self.rb_escpos.setChecked(pc["type"] == "escpos")
         self.rb_sim.toggled.connect(self._on_printer_type_changed)
-        self.rb_brother.toggled.connect(self._on_printer_type_changed)
         self.rb_escpos.toggled.connect(self._on_printer_type_changed)
         type_layout.addWidget(self.rb_sim)
-        type_layout.addWidget(self.rb_brother)
         type_layout.addWidget(self.rb_escpos)
         layout.addWidget(grp_type)
 
-        self.grp_brother = QGroupBox("Brother QL Model")
-        brother_form = QFormLayout(self.grp_brother)
-        self.cb_brother_model = QComboBox()
-        self.cb_brother_model.addItems([
-            "QL-700", "QL-710W", "QL-720NW",
-            "QL-800", "QL-810W", "QL-820NWB",
-            "QL-1100", "QL-1110NWB"
-        ])
-        self.cb_brother_model.setCurrentText(pc.get("brother_model", "QL-800"))
-        brother_form.addRow("Model", self.cb_brother_model)
-        layout.addWidget(self.grp_brother)
+        # ── Windows Printer Selection ─────────────────────────────
+        self.grp_printer = QGroupBox("Windows Printer")
+        printer_form = QFormLayout(self.grp_printer)
 
-        self.grp_port = QGroupBox("USB Port")
-        port_layout = QFormLayout(self.grp_port)
-        port_row = QHBoxLayout()
-        self.cb_port = QComboBox()
-        self.cb_port.setMinimumWidth(200)
-        self.cb_port.setEditable(True)
-        self.cb_port.setCurrentText(pc.get("usb_port", ""))
-        btn_detect = QPushButton("🔍  Detect")
-        btn_detect.setFixedWidth(100)
-        btn_detect.clicked.connect(self._detect_ports)
-        port_row.addWidget(self.cb_port)
-        port_row.addWidget(btn_detect)
-        self.lbl_ports_status = QLabel("")
-        self.lbl_ports_status.setStyleSheet("color: #666; font-size: 11px;")
-        port_layout.addRow("Port", port_row)
-        port_layout.addRow("", self.lbl_ports_status)
-        layout.addWidget(self.grp_port)
+        printer_row = QHBoxLayout()
+        self.cb_printer = QComboBox()
+        self.cb_printer.setMinimumWidth(280)
+        self.cb_printer.setMaxVisibleItems(15)
+        btn_refresh = QPushButton("🔍  Refresh")
+        btn_refresh.setFixedWidth(100)
+        btn_refresh.clicked.connect(self._detect_printers)
+        printer_row.addWidget(self.cb_printer)
+        printer_row.addWidget(btn_refresh)
 
+        self.lbl_printer_status = QLabel("")
+        self.lbl_printer_status.setStyleSheet("color: #666; font-size: 11px;")
+
+        printer_form.addRow("Printer", printer_row)
+        printer_form.addRow("", self.lbl_printer_status)
+
+        note = QLabel("Any printer installed in Windows is supported\n(Star TSP, Epson TM, Brother QL, ...)")
+        note.setStyleSheet("color: #666; font-size: 11px;")
+        printer_form.addRow("", note)
+        layout.addWidget(self.grp_printer)
+
+        # ── Test Print ────────────────────────────────────────────
         btn_test_print = QPushButton("🖨  Test Print")
         btn_test_print.clicked.connect(self._test_print)
         layout.addWidget(btn_test_print)
         layout.addStretch()
 
         self._on_printer_type_changed()
-        self._detect_ports()
+        self._detect_printers()
         return w
 
     def _on_printer_type_changed(self):
-        self.grp_brother.setVisible(self.rb_brother.isChecked())
-        self.grp_port.setVisible(not self.rb_sim.isChecked())
+        self.grp_printer.setVisible(self.rb_escpos.isChecked())
 
-    def _detect_ports(self):
-        self.lbl_ports_status.setText("Scanning...")
+    def _detect_printers(self):
+        """List all Windows printers via win32print."""
+        self.lbl_printer_status.setText("Scanning...")
         try:
-            import serial.tools.list_ports
-            ports = list(serial.tools.list_ports.comports())
-            self.cb_port.clear()
-            if ports:
-                for p in ports:
-                    self.cb_port.addItem(f"{p.device} — {p.description}", p.device)
-                self.lbl_ports_status.setText(f"✓  {len(ports)} port(s) found")
-                self.lbl_ports_status.setStyleSheet("color: #4CAF50; font-size: 11px;")
-            else:
-                self.cb_port.addItem("No ports found")
-                self.lbl_ports_status.setText("No USB ports detected")
-                self.lbl_ports_status.setStyleSheet("color: #E8581A; font-size: 11px;")
+            import win32print
+            printers = [p[2] for p in win32print.EnumPrinters(2)]
+            # Filter out virtual printers
+            virtual = ["PDF", "XPS", "OneNote", "Fax", "Webex", "Snagit",
+                       "Microsoft", "Brother PC-FAX"]
+            thermal = [p for p in printers if not any(v in p for v in virtual)]
+            other   = [p for p in printers if any(v in p for v in virtual)]
+
+            self.cb_printer.clear()
+            saved = self.config["printer"].get("printer_name", "")
+
+            # Show thermal/POS printers first
+            for p in thermal:
+                self.cb_printer.addItem(p)
+            if other:
+                self.cb_printer.insertSeparator(len(thermal))
+                for p in other:
+                    self.cb_printer.addItem(p)
+
+            # Restore saved selection
+            idx = self.cb_printer.findText(saved)
+            if idx >= 0:
+                self.cb_printer.setCurrentIndex(idx)
+            elif thermal:
+                self.cb_printer.setCurrentIndex(0)
+
+            self.lbl_printer_status.setText(
+                f"✓  {len(printers)} printer(s) found — {len(thermal)} thermal/POS")
+            self.lbl_printer_status.setStyleSheet("color: #4CAF50; font-size: 11px;")
+
         except ImportError:
-            self.cb_port.addItem("pyserial not installed")
-            self.lbl_ports_status.setText("Run: pip install pyserial")
-            self.lbl_ports_status.setStyleSheet("color: #E8581A; font-size: 11px;")
+            self.cb_printer.addItem("pywin32 not installed")
+            self.lbl_printer_status.setText("Run: pip install pywin32")
+            self.lbl_printer_status.setStyleSheet("color: #E8581A; font-size: 11px;")
+        except Exception as e:
+            self.lbl_printer_status.setText(f"Error: {str(e)[:60]}")
+            self.lbl_printer_status.setStyleSheet("color: #E8581A; font-size: 11px;")
 
     def _test_print(self):
         self._sync_to_config()
@@ -472,13 +486,9 @@ class SettingsDialog(QDialog):
 
         if self.rb_sim.isChecked():
             self.config["printer"]["type"] = "simulation"
-        elif self.rb_brother.isChecked():
-            self.config["printer"]["type"] = "brother_ql"
         else:
             self.config["printer"]["type"] = "escpos"
-        port_data = self.cb_port.currentData()
-        self.config["printer"]["usb_port"]      = port_data if port_data else self.cb_port.currentText()
-        self.config["printer"]["brother_model"] = self.cb_brother_model.currentText()
+        self.config["printer"]["printer_name"] = self.cb_printer.currentText() if hasattr(self, 'cb_printer') else ""
 
     def _save(self):
         self._sync_to_config()
