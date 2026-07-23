@@ -12,8 +12,9 @@ import json
 import os
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtGui import QIcon
+from core.utils import get_config_path
 
-CONFIG_FILE = "config.json"
+CONFIG_FILE = get_config_path()
 
 DEFAULT_CONFIG = {
     "mode": "unleashed",

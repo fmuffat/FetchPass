@@ -5,10 +5,10 @@ Handles authentication and voucher generation for Ruckus Unleashed.
 
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
-from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.webdriver import WebDriver as ChromeWebDriver
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
@@ -24,6 +24,7 @@ class UnleashedClient:
         self.password     = password
         self.ssid         = ssid
         self.account_type = account_type
+        self._driver      = None
 
         if account_type == "guestadmin":
             self.base_url  = f"https://{ip}/user"
@@ -42,7 +43,7 @@ class UnleashedClient:
             self.btn_text  = "Unleash"
             self.wait_elem = None
 
-    def _make_driver(self) -> webdriver.Chrome:
+    def _make_driver(self) -> ChromeWebDriver:
         options = Options()
         options.add_argument("--headless")
         options.add_argument("--no-sandbox")
@@ -50,12 +51,28 @@ class UnleashedClient:
         options.add_argument("--ignore-certificate-errors")
         options.add_argument("--log-level=3")
         options.add_argument("--page-load-strategy=eager")
-        driver = webdriver.Chrome(
+        driver = ChromeWebDriver(
             service=Service(ChromeDriverManager().install()),
             options=options
         )
         driver.set_page_load_timeout(10)
         return driver
+
+    def _get_driver(self) -> ChromeWebDriver:
+        """Return a cached, already logged-in driver, creating and logging in only once."""
+        if self._driver is None:
+            self._driver = self._make_driver()
+            self._login(self._driver)
+        return self._driver
+
+    def close(self):
+        """Close the cached browser session, if any."""
+        if self._driver is not None:
+            try:
+                self._driver.quit()
+            except Exception:
+                pass
+            self._driver = None
 
     def _api_call(self, driver, action: str, comp: str, xml_body: str) -> dict:
         result = driver.execute_async_script("""
@@ -105,9 +122,8 @@ class UnleashedClient:
 
     def test_connection(self) -> tuple:
         """Test connection — returns (success: bool, message: str)"""
-        driver = self._make_driver()
         try:
-            self._login(driver)
+            driver = self._get_driver()
 
             if self.account_type == "admin":
                 resp = self._api_call(driver, "getstat", "system", "<sysinfo/>")
@@ -135,9 +151,8 @@ class UnleashedClient:
                 pass  # already clear
             elif "net::" in msg:
                 msg = f"Network error — cannot connect to {self.ip}"
+            self.close()
             return False, msg
-        finally:
-            driver.quit()
 
     def _verify_ssid(self, driver) -> str:
         """Verify SSID exists — returns status string."""
@@ -162,9 +177,8 @@ class UnleashedClient:
         unit: 'hour' | 'day' | 'week'
         Returns voucher info dict.
         """
-        driver = self._make_driver()
         try:
-            self._login(driver)
+            driver = self._get_driver()
 
             # Generate key
             resp = self._api_call(driver, "docmd", "system",
@@ -179,13 +193,19 @@ class UnleashedClient:
             if not key:
                 raise Exception("Could not extract guest key from response")
 
-            # Create voucher — pass unit directly to API
+            # Create voucher — Unleashed only honours duration-unit='hour',
+            # 'day'/'week' are silently ignored and fall back to a 1h default.
+            # Convert to total hours and always send duration-unit='hour'.
+            unit_to_hours = {"hour": 1, "day": 24, "week": 24 * 7}
+            api_duration = duration * unit_to_hours.get(unit, 1)
+
             now = datetime.now()
             guest_name = f"FetchPass-{now.strftime('%Y%m%d-%H%M%S')}"
-            resp2 = self._api_call(driver, "docmd", "system",
+            create_guest_xml = (
                 f"<xcmd cmd='create-guest' name='{guest_name}' ssid='{self.ssid}' "
-                f"duration='{duration}' duration-unit='{unit}' x-key='{key}' "
+                f"duration='{api_duration}' duration-unit='hour' x-key='{key}' "
                 f"share-number='1' reauth-enabled='false' />")
+            resp2 = self._api_call(driver, "docmd", "system", create_guest_xml)
 
             # Build duration string for display
             unit_labels = {"hour": "h", "day": "day(s)", "week": "week(s)"}
@@ -231,6 +251,5 @@ class UnleashedClient:
 
         except Exception as e:
             msg = str(e).split("\n")[0][:120]
+            self.close()
             raise Exception(msg)
-        finally:
-            driver.quit()

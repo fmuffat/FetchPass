@@ -5,6 +5,7 @@ Supports simulation and ESC/POS via Windows printer spooler (win32print RAW).
 
 import os
 from datetime import datetime
+from core.utils import get_desktop_path
 
 
 class Printer:
@@ -71,7 +72,7 @@ class Printer:
         print("--- END SIMULATION ---\n")
 
         filename = f"ticket_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
-        filepath = os.path.join(os.path.expanduser("~"), "Desktop", filename)
+        filepath = os.path.join(get_desktop_path(), filename)
         try:
             with open(filepath, "w", encoding="utf-8") as f:
                 f.write("\n".join(lines))

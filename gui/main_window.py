@@ -16,40 +16,15 @@ class VoucherThread(QThread):
     success = pyqtSignal(dict)
     error   = pyqtSignal(str)
 
-    def __init__(self, config: dict, duration: int, unit: str):
+    def __init__(self, client, duration: int, unit: str):
         super().__init__()
-        self.config   = config
+        self.client   = client
         self.duration = duration
         self.unit     = unit
 
     def run(self):
         try:
-            mode = self.config["mode"]
-            if mode == "unleashed":
-                from core.unleashed import UnleashedClient
-                uc = self.config["unleashed"]
-                client = UnleashedClient(
-                    ip=uc["ip"], username=uc["username"],
-                    password=uc["password"], ssid=uc["ssid"],
-                    account_type=uc["account_type"]
-                )
-            elif mode == "ruckus_one":
-                from core.ruckus_one import RuckusOneClient
-                r1 = self.config["ruckus_one"]
-                client = RuckusOneClient(
-                    region=r1["region"], tenant_id=r1["tenant_id"],
-                    client_id=r1["client_id"], client_secret=r1["client_secret"],
-                    ssid=r1["ssid"]
-                )
-            else:  # smartzone
-                from core.smartzone import SmartZoneClient
-                sz = self.config["smartzone"]
-                client = SmartZoneClient(
-                    host=sz["host"], username=sz["username"],
-                    password=sz["password"], zone=sz["zone"],
-                    wlan=sz["wlan"]
-                )
-            voucher = client.create_voucher(self.duration, self.unit)
+            voucher = self.client.create_voucher(self.duration, self.unit)
             self.success.emit(voucher)
         except Exception as e:
             self.error.emit(str(e))
@@ -60,6 +35,7 @@ class MainWindow(QMainWindow):
     def __init__(self, config: dict):
         super().__init__()
         self.config = config
+        self._client = None
         self.setWindowTitle("FetchPass 🐕")
         self.setMinimumSize(500, 580)
         self.setStyleSheet(self._stylesheet())
@@ -221,6 +197,50 @@ class MainWindow(QMainWindow):
         unit_lbl = {"hour": "h", "day": "day(s)", "week": "week(s)"}
         return f"{label}\n{dur} {unit_lbl.get(unit, unit)}"
 
+    # ── Client (persisted across clicks to avoid re-login/relaunch each time) ──
+    def _get_client(self):
+        if self._client is not None:
+            return self._client
+
+        mode = self.config["mode"]
+        if mode == "unleashed":
+            from core.unleashed import UnleashedClient
+            uc = self.config["unleashed"]
+            self._client = UnleashedClient(
+                ip=uc["ip"], username=uc["username"],
+                password=uc["password"], ssid=uc["ssid"],
+                account_type=uc["account_type"]
+            )
+        elif mode == "ruckus_one":
+            from core.ruckus_one import RuckusOneClient
+            r1 = self.config["ruckus_one"]
+            self._client = RuckusOneClient(
+                region=r1["region"], tenant_id=r1["tenant_id"],
+                client_id=r1["client_id"], client_secret=r1["client_secret"],
+                ssid=r1["ssid"]
+            )
+        else:  # smartzone
+            from core.smartzone import SmartZoneClient
+            sz = self.config["smartzone"]
+            self._client = SmartZoneClient(
+                host=sz["host"], username=sz["username"],
+                password=sz["password"], zone=sz["zone"],
+                wlan=sz["wlan"]
+            )
+        return self._client
+
+    def _close_client(self):
+        if self._client is not None and hasattr(self._client, "close"):
+            try:
+                self._client.close()
+            except Exception:
+                pass
+        self._client = None
+
+    def closeEvent(self, event):
+        self._close_client()
+        super().closeEvent(event)
+
     # ── Generate Voucher ─────────────────────────────────────────
     def _generate(self, btn_cfg: dict):
         duration = btn_cfg.get("duration", 4)
@@ -229,7 +249,7 @@ class MainWindow(QMainWindow):
         self.lbl_status.setText("⏳  Generating voucher...")
         self.lbl_status.setStyleSheet("color: #f0a500; font-size: 12px;")
 
-        self.thread = VoucherThread(self.config, duration, unit)
+        self.thread = VoucherThread(self._get_client(), duration, unit)
         self.thread.success.connect(self._on_voucher_success)
         self.thread.error.connect(self._on_voucher_error)
         self.thread.start()
@@ -289,6 +309,7 @@ class MainWindow(QMainWindow):
         dlg = SettingsDialog(self.config, self)
         if dlg.exec():
             self.config = dlg.get_config()
+            self._close_client()
             self._save_config()
             self.lbl_mode.setText(self._mode_label())
             self._refresh_buttons()
@@ -300,7 +321,8 @@ class MainWindow(QMainWindow):
 
     def _save_config(self):
         try:
-            with open("config.json", "w") as f:
+            from core.utils import get_config_path
+            with open(get_config_path(), "w") as f:
                 json.dump(self.config, f, indent=4)
         except Exception:
             pass

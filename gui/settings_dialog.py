@@ -47,7 +47,11 @@ class TestConnectionThread(QThread):
                     password=sz["password"], zone=sz["zone"],
                     wlan=sz["wlan"]
                 )
-            success, msg = client.test_connection()
+            try:
+                success, msg = client.test_connection()
+            finally:
+                if hasattr(client, "close"):
+                    client.close()
             self.result.emit(success, msg)
         except Exception as e:
             self.result.emit(False, str(e).split("\n")[0][:120])
