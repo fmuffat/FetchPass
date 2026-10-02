@@ -10,6 +10,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QPropertyAnimation, QEasingCurve
 from PyQt6.QtGui import QFont, QColor
+from printing.ticket_text import ticket_fields
 
 
 class VoucherThread(QThread):
@@ -300,13 +301,12 @@ class MainWindow(QMainWindow):
             lines.append(f"  {tc['header1']}")
         if tc.get("header2"):
             lines.append(f"  {tc['header2']}")
+        fields = ticket_fields(voucher, tc.get("language", "en"))
         lines.append("  " + "─" * 28)
-        lines.append(f"  Network  : {voucher['ssid']}")
-        lines.append(f"  Password : {voucher['key']}")
-        lines.append("  " + "─" * 28)
-        lines.append(f"  Valid    : {voucher['duration']}")
-        lines.append(f"  Created  : {voucher['created']}")
-        lines.append(f"  Expires  : {voucher['expires']}")
+        for i, (label, value) in enumerate(fields):
+            if i == 2:  # separator between credentials and validity
+                lines.append("  " + "─" * 28)
+            lines.append(f"  {label} : {value}")
         if tc.get("footer"):
             lines.append("  " + "─" * 28)
             lines.append(f"  {tc['footer']}")

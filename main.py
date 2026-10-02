@@ -4,7 +4,7 @@ FetchPass 🐕
 Ruckus Unleashed / Ruckus One — Guest Voucher Generator
 
 Requirements:
-    pip install PyQt6 selenium webdriver-manager
+    pip install -r requirements.txt
 """
 
 import sys
@@ -54,9 +54,7 @@ DEFAULT_CONFIG = {
     "printer": {
         "type": "simulation",
         "printer_name": "",
-        "connection": "usb",
-        "ip": "",
-        "port": 9100
+        "codepage": "cp437"
     }
 }
 

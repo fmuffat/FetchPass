@@ -6,7 +6,8 @@ Supports simulation and ESC/POS via Windows printer spooler (win32print RAW).
 import os
 import unicodedata
 from datetime import datetime
-from core.utils import get_desktop_path
+from core.utils import get_app_dir
+from printing.ticket_text import ticket_fields
 
 
 class Printer:
@@ -45,15 +46,17 @@ class Printer:
         if header2:
             lines.append(header2.center(w))
         lines.append(sep)
+        network, password, valid, created, expires = ticket_fields(
+            voucher, ticket_config.get("language", "en"))
         lines.append("")
-        lines.append(f"Network  : {voucher.get('ssid', '')}")
+        lines.append(f"{network[0]} : {network[1]}")
         lines.append("")
-        lines.append(f"Password : {voucher.get('key', '')}")
+        lines.append(f"{password[0]} : {password[1]}")
         lines.append("")
         lines.append(sep2)
-        lines.append(f"Valid for: {voucher.get('duration', '')}")
-        lines.append(f"Created  : {voucher.get('created', '')}")
-        lines.append(f"Expires  : {voucher.get('expires', '')}")
+        lines.append(f"{valid[0]} : {valid[1]}")
+        lines.append(f"{created[0]} : {created[1]}")
+        lines.append(f"{expires[0]} : {expires[1]}")
         lines.append(sep2)
 
         if footer:
@@ -87,9 +90,12 @@ class Printer:
             print(line)
         print("--- END SIMULATION ---\n")
 
+        # Saved in a tickets/ folder next to the app rather than on the Desktop
         filename = f"ticket_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
-        filepath = os.path.join(get_desktop_path(), filename)
+        folder   = os.path.join(get_app_dir(), "tickets")
+        filepath = os.path.join(folder, filename)
         try:
+            os.makedirs(folder, exist_ok=True)
             with open(filepath, "w", encoding="utf-8") as f:
                 f.write("\n".join(lines))
             return True, f"Simulation — ticket saved to {filepath}"

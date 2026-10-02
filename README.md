@@ -1,12 +1,13 @@
 # 🐕 FetchPass
 
-**Guest Wi-Fi voucher generator for Ruckus Unleashed and Ruckus One.**
+**Guest Wi-Fi voucher generator for Ruckus Unleashed, Ruckus One and SmartZone.**
 
 FetchPass is a lightweight desktop application that generates guest Wi-Fi vouchers with a single click, and optionally prints them on a thermal printer.
 
 > **Tested on:**
 > - Ruckus Unleashed 200.19
 > - Ruckus One (June 2026 release)
+> - SmartZone vSZ-E / vSZ-H 7.1.1
 
 ---
 
@@ -14,11 +15,12 @@ FetchPass is a lightweight desktop application that generates guest Wi-Fi vouche
 
 - ✅ Ruckus Unleashed support (firmware 200.19+)
 - ✅ Ruckus One support (EU / North America / Asia)
+- ✅ SmartZone support (vSZ-E / vSZ-H, firmware 7.0+)
 - 3 configurable voucher buttons (duration in hours, days or weeks)
-- Thermal printer support: simulation mode, Brother QL (USB), ESC/POS (USB/Network)
-- Fully customisable ticket (header, footer, language)
+- Thermal printing on any printer installed in Windows (Star TSP, Epson TM, …) — or simulation mode
+- Fully customisable ticket (header, footer, language: en / fr / de / it)
 - Dark UI with Ruckus color scheme
-- Runs on Windows / Linux / Raspberry Pi
+- Runs on Windows — on Linux / Raspberry Pi, voucher generation works but printing is simulation only
 
 ---
 
@@ -28,25 +30,17 @@ FetchPass is a lightweight desktop application that generates guest Wi-Fi vouche
 - Google Chrome installed on the machine *(required for Unleashed only — Ruckus One does not need it)*
 
 ```bash
-pip install PyQt6 selenium webdriver-manager requests
+pip install -r requirements.txt
 ```
 
-For Brother QL printing (optional):
-```bash
-pip install brother_ql Pillow
-```
-
-For ESC/POS printing (optional):
-```bash
-pip install python-escpos
-```
+`pywin32` (Windows printing) is installed automatically on Windows only.
 
 ---
 
 ## Installation
 
 ```bash
-git clone https://github.com/your-username/FetchPass.git
+git clone https://github.com/fmuffat/FetchPass.git
 cd FetchPass
 pip install -r requirements.txt
 python main.py
@@ -63,12 +57,15 @@ FetchPass/
 ├── requirements.txt
 ├── core/
 │   ├── unleashed.py         ← Ruckus Unleashed integration
-│   └── ruckus_one.py        ← Ruckus One integration
+│   ├── ruckus_one.py        ← Ruckus One integration
+│   ├── smartzone.py         ← SmartZone integration
+│   └── utils.py             ← shared helpers (config path)
 ├── gui/
 │   ├── main_window.py       ← main window with 3 voucher buttons
 │   └── settings_dialog.py   ← settings (Connection, Buttons, Ticket, Printer)
 └── printing/
-    └── printer.py           ← simulation, Brother QL, ESC/POS
+    ├── printer.py           ← simulation and Windows printer output
+    └── ticket_text.py       ← ticket labels (en / fr / de / it)
 ```
 
 ---
@@ -78,7 +75,7 @@ FetchPass/
 On first launch, click **⚙ Settings** to configure:
 
 ### Connection tab
-- Choose **Ruckus Unleashed** or **Ruckus One**
+- Choose **Ruckus Unleashed**, **Ruckus One** or **SmartZone**
 - Enter your credentials and Guest SSID
 - Click **Test Connection** to verify
 
@@ -95,13 +92,14 @@ On first launch, click **⚙ Settings** to configure:
 Set the label, duration and unit (hours / days / weeks) for each of the 3 buttons.
 
 ### Ticket Design tab
-Customise the printed ticket: header lines, footer, language.
+Customise the printed ticket: header lines, footer, and the language of the ticket labels (Network, Password, Valid for…).
 
 ### Printer tab
 Choose between:
-- **Simulation** *(default)* — displays ticket on screen and saves to a `.txt` file on the Desktop
-- **Brother QL (USB)** — requires `brother_ql` and `Pillow`
-- **ESC/POS (USB)** — requires `python-escpos`, works with Epson TM series, Star Micronics, and generic ESC/POS printers
+- **Simulation** *(default)* — displays the ticket on screen and saves it as a `.txt` file in the `tickets/` folder next to the app
+- **ESC/POS / Star / Epson (Windows)** — prints as plain text on any printer installed in Windows (Star TSP, Epson TM, …) via the Windows spooler
+
+Accented characters are sent in code page `cp437` (Star / Epson default). If they print incorrectly, change `printer.codepage` in `config.json` (e.g. `cp858`, `cp850`).
 
 ---
 
@@ -137,7 +135,7 @@ If a password longer than 8 characters is generated, FetchPass will display a wa
 The guest pass password retrieval via API requires SmartZone firmware **7.0 or later**. A known bug in vSZ-H 6.1.2 causes the guest pass list to always return empty, making it impossible to retrieve the password via API.
 
 ### Connection test
-The Test Connection button in Settings verifies your credentials only. It does not verify that the Zone name or WLAN name exist — make sure they are correctly typed and case sensitive.
+The Test Connection button in Settings verifies your credentials and, when the account is allowed to list zones and WLANs, checks that the Zone and WLAN names exist (and suggests the available names otherwise). Accounts without these rights only get the credentials check — make sure the names are correctly typed, including case.
 
 ## Building the .exe (Windows)
 
@@ -146,7 +144,7 @@ pip install pyinstaller
 pyinstaller --onefile --windowed --name FetchPass main.py
 ```
 
-The executable will be in the `dist/` folder.
+The executable will be in the `dist/` folder. `config.json` and the `tickets/` folder are created next to the `.exe`.
 
 ---
 

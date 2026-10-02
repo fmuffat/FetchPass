@@ -14,10 +14,29 @@
         "client_secret": "",
         "ssid": ""
     },
+    "smartzone": {
+        "host": "",
+        "username": "",
+        "password": "",
+        "zone": "",
+        "wlan": ""
+    },
     "buttons": [
-        {"label": "Short Visit",  "duration": 4,  "unit": "hour"},
-        {"label": "Full Day",     "duration": 1,  "unit": "day"},
-        {"label": "Weekly Pass",  "duration": 1,  "unit": "week"}
+        {
+            "label": "Short Visit",
+            "duration": 4,
+            "unit": "hour"
+        },
+        {
+            "label": "Full Day",
+            "duration": 1,
+            "unit": "day"
+        },
+        {
+            "label": "Weekly Pass",
+            "duration": 1,
+            "unit": "week"
+        }
     ],
     "ticket": {
         "header1": "WiFi Guest Pass",
@@ -27,8 +46,7 @@
     },
     "printer": {
         "type": "simulation",
-        "connection": "usb",
-        "ip": "",
-        "port": 9100
+        "printer_name": "",
+        "codepage": "cp437"
     }
 }

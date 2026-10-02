@@ -23,3 +23,7 @@ config.json
 # OS
 .DS_Store
 Thumbs.db
+
+# Simulation tickets (contain guest passwords)
+tickets/
+config.json.corrupt-*
