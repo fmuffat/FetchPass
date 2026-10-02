@@ -166,8 +166,10 @@ class RuckusOneClient:
 
                     key = guest.get("password", "")
                     if not key:
-                        errors.append(f"No password in: {str(data)[:200]}")
-                        continue
+                        # The guest was created — retrying with the other
+                        # payload format would create a second one.
+                        errors.append(f"Guest created but no password in: {str(data)[:200]}")
+                        break
 
                     unit_labels = {"hour": "h", "day": "day(s)", "week": "week(s)"}
                     duration_str = f"{duration} {unit_labels.get(unit, unit)}"

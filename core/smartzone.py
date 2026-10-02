@@ -61,51 +61,41 @@ class SmartZoneClient:
         except Exception:
             pass
 
-    def _verify_wlan(self, ticket: str):
+    def _verify_wlan(self, ticket: str) -> str:
         """
-        Verify that the configured WLAN exists in the configured zone.
-        Raises an exception with a clear message if not found.
+        Check that the configured zone and WLAN exist — returns a status string.
+        Accounts without admin rights usually cannot list zones/WLANs; the result
+        is then 'not verified' rather than an error.
         """
+        not_verified = (f"⚠ Zone '{self.zone}' and WLAN '{self.wlan}' are case sensitive "
+                        f"— not verified")
         params = {"serviceTicket": ticket}
+        try:
+            resp = self.session.get(f"{self.base_url}/rkszones", params=params, timeout=10)
+            if not resp.ok:
+                return not_verified
+            zones = resp.json().get("list", [])
+            zone_id = next((z.get("id") for z in zones if z.get("name") == self.zone), None)
+            if not zone_id:
+                available = ", ".join(z.get("name", "") for z in zones[:5])
+                return f"⚠ Zone '{self.zone}' not found — available: {available}"
 
-        # Find zone ID
-        resp = self.session.get(f"{self.base_url}/rkszones", params=params, timeout=10)
-        if not resp.ok:
-            return  # Can't verify — skip silently
-
-        zone_id = None
-        for z in resp.json().get("list", []):
-            if z.get("name") == self.zone:
-                zone_id = z.get("id")
-                break
-
-        if not zone_id:
-            available = [z.get("name") for z in resp.json().get("list", [])]
-            raise Exception(
-                f"Zone '{self.zone}' not found on this SmartZone.\n"
-                f"Available zones: {', '.join(available[:10])}"
-            )
-
-        # Find WLAN in zone
-        resp2 = self.session.get(
-            f"{self.base_url}/rkszones/{zone_id}/wlans",
-            params=params, timeout=10
-        )
-        if not resp2.ok:
-            return  # Can't verify — skip silently
-
-        wlans = [w.get("name") for w in resp2.json().get("list", [])]
-        if self.wlan not in wlans:
-            raise Exception(
-                f"WLAN '{self.wlan}' not found in zone '{self.zone}'.\n"
-                f"Available WLANs: {', '.join(wlans)}"
-            )
+            resp2 = self.session.get(f"{self.base_url}/rkszones/{zone_id}/wlans",
+                                     params=params, timeout=10)
+            if not resp2.ok:
+                return not_verified
+            wlans = [w.get("name", "") for w in resp2.json().get("list", [])]
+            if self.wlan not in wlans:
+                return (f"⚠ WLAN '{self.wlan}' not found in zone '{self.zone}' "
+                        f"— available: {', '.join(wlans[:5])}")
+            return f"Zone '{self.zone}' / WLAN '{self.wlan}' ✓"
+        except Exception:
+            return not_verified
 
     def test_connection(self) -> tuple:
         """
-        Test connection — verifies credentials only.
-        Zone and WLAN names are case sensitive and cannot be verified
-        without admin privileges.
+        Test connection — verifies credentials, and the zone / WLAN names
+        when the account is allowed to list them.
         """
         ticket = None
         try:
@@ -125,7 +115,7 @@ class SmartZoneClient:
             msg = f"Authentication successful"
             if version:
                 msg += f" — SmartZone {version}"
-            msg += f" ⚠ Zone '{self.zone}' and WLAN '{self.wlan}' are case sensitive — not verified"
+            msg += f" — {self._verify_wlan(ticket)}"
             return True, msg
 
         except Exception as e:
@@ -182,7 +172,7 @@ class SmartZoneClient:
                     msg = error_data.get("message", error_msg)
                     if "Zone can not be found" in msg:
                         raise Exception(f"Zone '{self.zone}' not found — check name and case sensitivity")
-                    elif "WLAN can not be found" in msg or "wlan" in msg.lower():
+                    elif "wlan can not be found" in msg.lower():
                         raise Exception(f"WLAN '{self.wlan}' not found in zone '{self.zone}' — check name and case sensitivity")
                     else:
                         raise Exception(f"HTTP {resp.status_code}: {msg[:150]}")
@@ -220,20 +210,46 @@ class SmartZoneClient:
     def _get_password(self, params: dict, guest_id: str, guest_name: str) -> str:
         """Retrieve the password (key) for a just-created guest pass."""
         import time
-        time.sleep(1)
-
-        resp = self.session.get(
-            f"{self.base_url}/identity/guestpass",
-            params=params, timeout=10
-        )
-        if resp.ok:
-            for gp in resp.json().get("list", []):
-                if gp.get("userId") == guest_id or gp.get("guestName") == guest_name:
-                    key = gp.get("key", "")
-                    if key:
-                        return key
+        # The new pass may take a moment to appear in the list — retry a few times
+        for attempt in range(3):
+            time.sleep(1)
+            key = self._find_password(params, guest_id, guest_name)
+            if key:
+                return key
 
         raise Exception(
             f"Guest pass created (ID: {guest_id}) but could not retrieve password. "
             f"This is a known issue on vSZ-H firmware < 7.0."
         )
+
+    def _find_password(self, params: dict, guest_id: str, guest_name: str) -> str:
+        """Walk all pages of the guest pass list — returns the key, or '' if not found."""
+        page_size = 500
+        index = 0
+        seen_first = set()
+        for _ in range(50):  # safety cap: 25'000 guest passes
+            resp = self.session.get(
+                f"{self.base_url}/identity/guestpass",
+                params={**params, "index": index, "listSize": page_size},
+                timeout=10
+            )
+            if not resp.ok:
+                return ""
+            data  = resp.json()
+            items = data.get("list", [])
+            if not items:
+                return ""
+            # Stop if the controller ignores paging and keeps returning the same page
+            first = items[0].get("userId") or items[0].get("guestName")
+            if first in seen_first:
+                return ""
+            seen_first.add(first)
+
+            for gp in items:
+                if gp.get("userId") == guest_id or gp.get("guestName") == guest_name:
+                    return gp.get("key", "")
+
+            if not data.get("hasMore"):
+                return ""
+            index += len(items)
+        return ""

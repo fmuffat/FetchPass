@@ -6,7 +6,7 @@ Main application window with 3 voucher generation buttons.
 import json
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QPushButton, QLabel, QFrame
+    QPushButton, QLabel, QFrame, QMessageBox
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QPropertyAnimation, QEasingCurve
 from PyQt6.QtGui import QFont, QColor
@@ -337,7 +337,8 @@ class MainWindow(QMainWindow):
     def _save_config(self):
         try:
             from core.utils import get_config_path
-            with open(get_config_path(), "w") as f:
+            with open(get_config_path(), "w", encoding="utf-8") as f:
                 json.dump(self.config, f, indent=4)
-        except Exception:
-            pass
+        except Exception as e:
+            QMessageBox.warning(self, "FetchPass — Settings",
+                                f"Settings could not be saved:\n{e}")
