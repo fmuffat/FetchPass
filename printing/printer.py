@@ -4,6 +4,7 @@ Supports simulation and ESC/POS via Windows printer spooler (win32print RAW).
 """
 
 import os
+import unicodedata
 from datetime import datetime
 from core.utils import get_desktop_path
 
@@ -13,6 +14,9 @@ class Printer:
     def __init__(self, config: dict):
         self.type         = config.get("type", "simulation")
         self.printer_name = config.get("printer_name", "")
+        # Thermal printers expect a single-byte code page, not UTF-8.
+        # CP437 is the power-on default on Star and Epson printers.
+        self.codepage     = config.get("codepage", "cp437")
 
     def print_voucher(self, voucher: dict, ticket_config: dict) -> tuple:
         """Print voucher ticket. Returns (success: bool, message: str)"""
@@ -64,6 +68,18 @@ class Printer:
 
         return lines
 
+    def _encode(self, text: str) -> bytes:
+        """Encode for the printer code page; unmappable chars fall back to
+        their unaccented form (Ô → O), or '?' as a last resort."""
+        out = bytearray()
+        for ch in text:
+            try:
+                out += ch.encode(self.codepage)
+            except UnicodeEncodeError:
+                plain = unicodedata.normalize("NFKD", ch).encode("ascii", "ignore")
+                out += plain or b"?"
+        return bytes(out)
+
     def _print_simulation(self, voucher: dict, ticket_config: dict) -> tuple:
         lines = self._build_lines(voucher, ticket_config)
         print("\n--- TICKET SIMULATION ---")
@@ -93,7 +109,7 @@ class Printer:
             try:
                 win32print.StartDocPrinter(hprinter, 1, ("FetchPass Ticket", None, "RAW"))
                 win32print.StartPagePrinter(hprinter)
-                win32print.WritePrinter(hprinter, text.encode("utf-8"))
+                win32print.WritePrinter(hprinter, self._encode(text))
                 win32print.EndPagePrinter(hprinter)
                 win32print.EndDocPrinter(hprinter)
             finally:

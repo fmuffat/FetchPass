@@ -12,6 +12,10 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QFont
 
+# Test threads still running when their dialog was closed — kept referenced
+# here until they finish, so Qt never destroys a running QThread.
+_orphan_threads = set()
+
 
 class TestConnectionThread(QThread):
     result = pyqtSignal(bool, str)
@@ -62,6 +66,7 @@ class SettingsDialog(QDialog):
     def __init__(self, config: dict, parent=None):
         super().__init__(parent)
         self.config = json.loads(json.dumps(config))  # deep copy
+        self._test_thread = None
         self.setWindowTitle("FetchPass — Settings")
         self.setMinimumWidth(560)
         self.setStyleSheet(self._stylesheet())
@@ -272,9 +277,9 @@ class SettingsDialog(QDialog):
         self.btn_test.setEnabled(False)
         self.lbl_status.setText("Testing...")
         self.lbl_status.setStyleSheet("color: #888;")
-        self.thread = TestConnectionThread(self.config)
-        self.thread.result.connect(self._on_test_result)
-        self.thread.start()
+        self._test_thread = TestConnectionThread(json.loads(json.dumps(self.config)))
+        self._test_thread.result.connect(self._on_test_result)
+        self._test_thread.start()
 
     def _on_test_result(self, success: bool, msg: str):
         self.btn_test.setEnabled(True)
@@ -493,6 +498,18 @@ class SettingsDialog(QDialog):
         else:
             self.config["printer"]["type"] = "escpos"
         self.config["printer"]["printer_name"] = self.cb_printer.currentText() if hasattr(self, 'cb_printer') else ""
+
+    def done(self, result):
+        # Closing (Save / Cancel / Esc / X) while a connection test is running:
+        # detach the thread instead of letting it be destroyed mid-run.
+        t = self._test_thread
+        if t is not None and t.isRunning():
+            t.result.disconnect(self._on_test_result)
+            t.setParent(None)
+            _orphan_threads.add(t)
+            t.finished.connect(lambda: _orphan_threads.discard(t))
+        self._test_thread = None
+        super().done(result)
 
     def _save(self):
         self._sync_to_config()

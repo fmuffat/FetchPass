@@ -4,6 +4,7 @@ Handles authentication and voucher generation for Ruckus Unleashed.
 """
 
 import xml.etree.ElementTree as ET
+from xml.sax.saxutils import quoteattr
 from datetime import datetime, timedelta
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.service import Service
@@ -171,6 +172,33 @@ class UnleashedClient:
         except Exception:
             return f"SSID '{self.ssid}' (not verified)"
 
+    def _check_response(self, resp: dict, cmd: str) -> str:
+        """Validate an API response — raise unless it is a well-formed ajax-response."""
+        status = resp.get("status")
+        body   = resp.get("body", "").strip()
+        if status != 200:
+            raise Exception(f"{cmd} failed — HTTP {status}")
+        if not body:
+            raise Exception(f"Empty response from {cmd}")
+        try:
+            root = ET.fromstring(body)
+        except ET.ParseError:
+            # Typically the login page, returned when the session has expired
+            raise Exception(f"Unexpected response from {cmd} (session expired?)")
+        if root.tag != "ajax-response":
+            raise Exception(f"Unexpected response from {cmd}: <{root.tag}>")
+        return body
+
+    def _generate_key(self, driver) -> str:
+        resp = self._api_call(driver, "docmd", "system",
+            f"<xcmd cmd='generate-guest-key' ssid={quoteattr(self.ssid)} />")
+        root = ET.fromstring(self._check_response(resp, "generate-guest-key"))
+        xmsg = root.find(".//xmsg")
+        key = xmsg.get("x-key", "") if xmsg is not None else ""
+        if not key:
+            raise Exception("Could not extract guest key from response")
+        return key
+
     def create_voucher(self, duration: int, unit: str = "hour") -> dict:
         """
         Create a guest voucher.
@@ -178,20 +206,20 @@ class UnleashedClient:
         Returns voucher info dict.
         """
         try:
+            # A cached session may have expired on the controller since the
+            # last click — if key generation fails on a reused session,
+            # log in again and retry once. Only this step is retried, so a
+            # guest can never be created twice.
+            reused = self._driver is not None
             driver = self._get_driver()
-
-            # Generate key
-            resp = self._api_call(driver, "docmd", "system",
-                f"<xcmd cmd='generate-guest-key' ssid='{self.ssid}' />")
-            body = resp.get("body", "")
-            if not body.strip():
-                raise Exception("Empty response from generate-guest-key")
-
-            root = ET.fromstring(body)
-            xmsg = root.find(".//xmsg")
-            key = xmsg.get("x-key", "") if xmsg is not None else ""
-            if not key:
-                raise Exception("Could not extract guest key from response")
+            try:
+                key = self._generate_key(driver)
+            except Exception:
+                if not reused:
+                    raise
+                self.close()
+                driver = self._get_driver()
+                key = self._generate_key(driver)
 
             # Create voucher — Unleashed only honours duration-unit='hour',
             # 'day'/'week' are silently ignored and fall back to a 1h default.
@@ -202,10 +230,12 @@ class UnleashedClient:
             now = datetime.now()
             guest_name = f"FetchPass-{now.strftime('%Y%m%d-%H%M%S')}"
             create_guest_xml = (
-                f"<xcmd cmd='create-guest' name='{guest_name}' ssid='{self.ssid}' "
-                f"duration='{api_duration}' duration-unit='hour' x-key='{key}' "
+                f"<xcmd cmd='create-guest' name={quoteattr(guest_name)} "
+                f"ssid={quoteattr(self.ssid)} "
+                f"duration='{api_duration}' duration-unit='hour' x-key={quoteattr(key)} "
                 f"share-number='1' reauth-enabled='false' />")
             resp2 = self._api_call(driver, "docmd", "system", create_guest_xml)
+            body2 = self._check_response(resp2, "create-guest")
 
             # Build duration string for display
             unit_labels = {"hour": "h", "day": "day(s)", "week": "week(s)"}
@@ -231,8 +261,7 @@ class UnleashedClient:
             }
 
             # Try to get exact expiry from API response
-            body2 = resp2.get("body", "")
-            if body2.strip():
+            if body2:
                 try:
                     root2 = ET.fromstring(body2)
                     xmsg2 = root2.find(".//xmsg")

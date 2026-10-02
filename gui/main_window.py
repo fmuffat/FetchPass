@@ -36,6 +36,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.config = config
         self._client = None
+        self._voucher_thread = None
         self.setWindowTitle("FetchPass 🐕")
         self.setMinimumSize(500, 580)
         self.setStyleSheet(self._stylesheet())
@@ -132,13 +133,13 @@ class MainWindow(QMainWindow):
         logo.setStyleSheet("color: #E8581A; font-weight: bold;")
         self.lbl_mode = QLabel(self._mode_label())
         self.lbl_mode.setStyleSheet("color: #555; font-size: 12px;")
-        btn_settings = QPushButton("⚙  Settings")
-        btn_settings.setObjectName("btn_settings")
-        btn_settings.clicked.connect(self._open_settings)
+        self.btn_settings = QPushButton("⚙  Settings")
+        self.btn_settings.setObjectName("btn_settings")
+        self.btn_settings.clicked.connect(self._open_settings)
         header.addWidget(logo)
         header.addStretch()
         header.addWidget(self.lbl_mode)
-        header.addWidget(btn_settings)
+        header.addWidget(self.btn_settings)
         layout.addLayout(header)
 
         # ── Divider ──────────────────────────────────────────────
@@ -151,6 +152,7 @@ class MainWindow(QMainWindow):
         self.lbl_status = QLabel("Ready")
         self.lbl_status.setObjectName("status_label")
         self.lbl_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lbl_status.setWordWrap(True)
         layout.addWidget(self.lbl_status)
 
         # ── Voucher Buttons ──────────────────────────────────────
@@ -238,6 +240,10 @@ class MainWindow(QMainWindow):
         self._client = None
 
     def closeEvent(self, event):
+        # Let a running generation finish before closing the client it uses
+        if self._voucher_thread is not None and self._voucher_thread.isRunning():
+            self.lbl_status.setText("⏳  Finishing current voucher before closing...")
+            self._voucher_thread.wait()
         self._close_client()
         super().closeEvent(event)
 
@@ -249,29 +255,36 @@ class MainWindow(QMainWindow):
         self.lbl_status.setText("⏳  Generating voucher...")
         self.lbl_status.setStyleSheet("color: #f0a500; font-size: 12px;")
 
-        self.thread = VoucherThread(self._get_client(), duration, unit)
-        self.thread.success.connect(self._on_voucher_success)
-        self.thread.error.connect(self._on_voucher_error)
-        self.thread.start()
+        self._voucher_thread = VoucherThread(self._get_client(), duration, unit)
+        self._voucher_thread.success.connect(self._on_voucher_success)
+        self._voucher_thread.error.connect(self._on_voucher_error)
+        self._voucher_thread.start()
 
     def _on_voucher_success(self, voucher: dict):
         self._set_busy(False)
-
-        # Warning if password > 8 chars
-        key = voucher.get("key", "")
-        if len(key) > 8:
-            self.lbl_status.setText(f"✓  Voucher created — ⚠ Password is {len(key)} chars (recommended max: 8)")
-            self.lbl_status.setStyleSheet("color: #f0a500; font-size: 12px;")
-        else:
-            self.lbl_status.setText("✓  Voucher created successfully")
-            self.lbl_status.setStyleSheet("color: #4CAF50; font-size: 12px;")
 
         self._display_voucher(voucher)
 
         # Print
         from printing.printer import Printer
         p = Printer(self.config["printer"])
-        p.print_voucher(voucher, self.config["ticket"])
+        printed, print_msg = p.print_voucher(voucher, self.config["ticket"])
+
+        warnings = []
+        if not printed:
+            warnings.append(f"Print failed: {print_msg}")
+        # Warning if password > 8 chars
+        key = voucher.get("key", "")
+        if len(key) > 8:
+            warnings.append(f"Password is {len(key)} chars (recommended max: 8)")
+
+        if warnings:
+            self.lbl_status.setText("✓  Voucher created — ⚠ " + " — ".join(warnings))
+            color = "#E8581A" if not printed else "#f0a500"
+            self.lbl_status.setStyleSheet(f"color: {color}; font-size: 12px;")
+        else:
+            self.lbl_status.setText("✓  Voucher created successfully")
+            self.lbl_status.setStyleSheet("color: #4CAF50; font-size: 12px;")
 
     def _on_voucher_error(self, msg: str):
         self._set_busy(False)
@@ -302,6 +315,8 @@ class MainWindow(QMainWindow):
     def _set_busy(self, busy: bool):
         for btn in self.voucher_buttons:
             btn.setEnabled(not busy)
+        # Settings would close the client the running thread is using
+        self.btn_settings.setEnabled(not busy)
 
     # ── Settings ─────────────────────────────────────────────────
     def _open_settings(self):
